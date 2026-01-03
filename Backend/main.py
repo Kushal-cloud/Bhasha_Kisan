@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict
 
 # CORRECTION: Import matches the filename 'firebase_backend.py'
-from firebase_backend import FirebaseService
+from firebase_service import FirebaseService
 from gemini_service import GeminiService
 
 # Setup Logging
