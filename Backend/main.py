@@ -1,11 +1,11 @@
 import os
 import logging
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, Dict
+from typing import Optional
 
-# CORRECTION: Import matches the filename 'firebase_backend.py'
+# CRITICAL: These imports match the filenames exactly
 from firebase_service import FirebaseService
 from gemini_service import GeminiService
 
@@ -24,13 +24,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Initialize Services
+# 2. Initialize Services (With Error Handling)
 try:
     firebase = FirebaseService()
     gemini = GeminiService()
 except Exception as e:
     logger.error(f"Service Initialization Failed: {e}")
-    # We don't raise here to allow the app to start, but health checks will fail
     firebase = None
     gemini = None
 
@@ -46,19 +45,21 @@ class TextQuery(BaseModel):
     language: str = "hi-IN"
 
 # 4. API Endpoints
-
 @app.get("/health")
 async def health_check():
-    if not firebase or not gemini:
-         raise HTTPException(status_code=503, detail="Services not initialized")
-    
-    firebase_status = firebase.is_healthy()
-    gemini_status = gemini.is_healthy()
-    
-    if firebase_status and gemini_status:
-        return {"status": "healthy"}
-    
-    raise HTTPException(status_code=503, detail="One or more services are unhealthy")
+    # Allow health check even if services are down (prevents restart loops)
+    status = {"status": "running"}
+    if firebase and firebase.is_healthy():
+        status["firebase"] = "connected"
+    else:
+        status["firebase"] = "disconnected"
+        
+    if gemini and gemini.is_healthy():
+        status["gemini"] = "connected"
+    else:
+        status["gemini"] = "disconnected"
+        
+    return status
 
 @app.post("/analyze-crop/{user_id}")
 async def analyze_crop(user_id: str, image: UploadFile = File(...)):
@@ -122,8 +123,3 @@ async def update_profile(user_id: str, profile: UserProfileUpdate):
         raise HTTPException(status_code=503, detail="Database unavailable")
     result = await firebase.create_user_profile(user_id, profile.dict())
     return {"status": "success", "profile": result}
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8080))
-    uvicorn.run(app, host="0.0.0.0", port=port)
