@@ -28,7 +28,7 @@ const Dashboard = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center">
-                <span className="text-3xl">🌾</span>
+                <span className="text-3xl">{'\u{1F33E}'}</span>
               </div>
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">भाषा-किसान</h1>
