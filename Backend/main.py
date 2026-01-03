@@ -1,125 +1,135 @@
 import os
-import logging
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+import json
+import uvicorn
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware  # <--- NEW IMPORT
 from pydantic import BaseModel
-from typing import Optional
+from dotenv import load_dotenv
+import google.generativeai as genai
+import firebase_admin
+from firebase_admin import credentials, firestore, storage
+from PIL import Image
+import io
 
-# CRITICAL: These imports match the filenames exactly
-from firebase_service import FirebaseService
-from gemini_service import GeminiService
+# 1. Load Environment Variables
+load_dotenv()
 
-# Setup Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# 2. Setup Gemini AI
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+if not GOOGLE_API_KEY:
+    print("Warning: GOOGLE_API_KEY not found!")
+else:
+    genai.configure(api_key=GOOGLE_API_KEY)
 
-app = FastAPI(title="Bhasha-Kisan API")
+# 3. Setup Firebase
+# We check if Firebase is already initialized to prevent errors on reload
+if not firebase_admin._apps:
+    firebase_creds_json = os.getenv("FIREBASE_CREDENTIALS")
+    storage_bucket = os.getenv("FIREBASE_STORAGE_BUCKET")
+    
+    if firebase_creds_json:
+        cred_dict = json.loads(firebase_creds_json)
+        cred = credentials.Certificate(cred_dict)
+        # Initialize with storage bucket if available
+        options = {"storageBucket": storage_bucket} if storage_bucket else {}
+        firebase_admin.initialize_app(cred, options)
+    else:
+        print("Warning: FIREBASE_CREDENTIALS not found. Database features won't work.")
 
-# 1. Enable CORS
+# Get Firestore Client
+db = firestore.client() if firebase_admin._apps else None
+
+# 4. Initialize FastAPI App
+app = FastAPI()
+
+# --- CRITICAL FIX: CORS MIDDLEWARE ---
+# This allows your Netlify frontend to talk to this backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],  # Allows ALL origins (Safe for this stage, ensures it works)
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allows all headers
 )
+# -------------------------------------
 
-# 2. Initialize Services (With Error Handling)
-try:
-    firebase = FirebaseService()
-    gemini = GeminiService()
-except Exception as e:
-    logger.error(f"Service Initialization Failed: {e}")
-    firebase = None
-    gemini = None
+# 5. Data Models
+class QueryRequest(BaseModel):
+    image: str = None
+    text: str = None
+    user_id: str = "guest"
 
-# 3. Data Models
-class UserProfileUpdate(BaseModel):
-    language: Optional[str] = "hi-IN"
-    location: Optional[dict] = {}
-    crops: Optional[list] = []
-    farm_size: Optional[float] = 0
+# 6. Routes
 
-class TextQuery(BaseModel):
-    query: str
-    language: str = "hi-IN"
+@app.get("/")
+def home():
+    return {"message": "Bhasha-Kisan Backend is Live & Connected! 🟢"}
 
-# 4. API Endpoints
-@app.get("/health")
-async def health_check():
-    # Allow health check even if services are down (prevents restart loops)
-    status = {"status": "running"}
-    if firebase and firebase.is_healthy():
-        status["firebase"] = "connected"
-    else:
-        status["firebase"] = "disconnected"
-        
-    if gemini and gemini.is_healthy():
-        status["gemini"] = "connected"
-    else:
-        status["gemini"] = "disconnected"
-        
-    return status
-
-@app.post("/analyze-crop/{user_id}")
-async def analyze_crop(user_id: str, image: UploadFile = File(...)):
-    if not gemini or not firebase:
-        raise HTTPException(status_code=503, detail="Services unavailable")
-        
+@app.post("/analyze")
+async def analyze_crop(
+    text: str = Form(None), 
+    image: UploadFile = File(None),
+    user_id: str = Form("guest")
+):
     try:
-        image_data = await image.read()
-        
-        # 1. Analyze with Gemini
-        analysis = await gemini.analyze_crop_disease(image_data=image_data)
-        
-        # 2. Store in Firebase
-        analysis_id = await firebase.store_crop_analysis(
-            user_id=user_id,
-            analysis=analysis,
-            image_url=None, 
-            audio_url=None
-        )
-        
-        return {"analysis_id": analysis_id, "result": analysis}
-    except Exception as e:
-        logger.error(f"Analysis Error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to analyze crop image")
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response_text = "No analysis generated."
 
-@app.post("/query/{user_id}")
-async def process_query(user_id: str, data: TextQuery):
-    if not gemini or not firebase:
-        raise HTTPException(status_code=503, detail="Services unavailable")
+        # Case A: Image + Text (Crop Doctor)
+        if image:
+            content = await image.read()
+            img = Image.open(io.BytesIO(content))
+            prompt = text or "Analyze this crop image. Identify disease, pests, or health status. Provide remedies if needed."
+            response = model.generate_content([prompt, img])
+            response_text = response.text
 
-    try:
-        # 1. Get AI Response
-        ai_response = await gemini.process_agricultural_query(
-            query=data.query, 
-            language=data.language
-        )
-        
-        # 2. Store Query History
-        query_id = await firebase.store_voice_query(
-            user_id=user_id,
-            transcript=data.query,
-            language=data.language,
-            confidence=ai_response.get("confidence", 1.0)
-        )
-        
-        return {"query_id": query_id, "response": ai_response}
+        # Case B: Text Only (Voice Assistant)
+        elif text:
+            prompt = f"You are an expert Indian agriculture assistant named 'Bhasha-Kisan'. Answer this query for a farmer: {text}"
+            response = model.generate_content(prompt)
+            response_text = response.text
+
+        else:
+            raise HTTPException(status_code=400, detail="Please provide an image or text.")
+
+        # Save to Firebase History (if DB is connected)
+        if db:
+            doc_ref = db.collection("users").document(user_id).collection("history").document()
+            doc_ref.set({
+                "timestamp": firestore.SERVER_TIMESTAMP,
+                "transcript": text or "Image Upload",
+                "analysis": "Image Analysis" if image else "Voice Query",
+                "response": {"answer": response_text}
+            })
+
+        return {"answer": response_text}
+
     except Exception as e:
-        logger.error(f"Query Error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to process agricultural query")
+        print(f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/history/{user_id}")
-async def get_history(user_id: str, limit: int = 20):
-    if not firebase:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-    history = await firebase.get_user_history(user_id, limit=limit)
-    return {"history": history}
+def get_history(user_id: str):
+    if not db:
+        return {"history": []}
+    try:
+        history_ref = db.collection("users").document(user_id).collection("history")
+        docs = history_ref.order_by("timestamp", direction=firestore.Query.DESCENDING).limit(10).stream()
+        
+        history_list = []
+        for doc in docs:
+            data = doc.to_dict()
+            # Convert timestamp to string for JSON compatibility
+            if "timestamp" in data and data["timestamp"]:
+                data["timestamp"] = data["timestamp"].isoformat()
+            history_list.append(data)
+            
+        return {"history": history_list}
+    except Exception as e:
+        print(f"History Error: {str(e)}")
+        return {"history": []}
 
-@app.post("/profile/{user_id}")
-async def update_profile(user_id: str, profile: UserProfileUpdate):
-    if not firebase:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-    result = await firebase.create_user_profile(user_id, profile.dict())
-    return {"status": "success", "profile": result}
+# 7. Run Server
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run(app, host="0.0.0.0", port=port)
