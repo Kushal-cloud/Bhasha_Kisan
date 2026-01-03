@@ -7,7 +7,7 @@ import json
 logger = logging.getLogger(__name__)
 
 class FirebaseService:
-    def __init__(self):
+    def __init__(self):           # KJ
         self.db = None
         self.bucket = None
         self._initialize_firebase()
