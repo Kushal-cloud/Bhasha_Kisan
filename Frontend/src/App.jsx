@@ -3,8 +3,8 @@ import Dashboard from './components/Dashboard';
 
 function App() {
   return (
+    // ⚠️ You were missing this opening tag:
     <div className="App">
-      {/* This renders the Dashboard component from your components folder */}
       <Dashboard />
     </div>
   );
