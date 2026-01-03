@@ -1,12 +1,14 @@
 import React from 'react';
-import Dashboard from './components/Dashboard.jsx';
+import Dashboard from './components/Dashboard.jsx'; // Make sure this has .jsx
+import { AuthProvider } from './hooks/useAuth';     // Import the new file
 
 function App() {
   return (
-    // ⚠️ You were missing this opening tag:
-    <div className="App">
-      <Dashboard />
-    </div>
+    <AuthProvider>
+      <div className="App">
+        <Dashboard />
+      </div>
+    </AuthProvider>
   );
 }
 
