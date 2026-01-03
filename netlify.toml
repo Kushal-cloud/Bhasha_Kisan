@@ -1,15 +1,16 @@
 [build]
-  # Tell Netlify to go into this folder before doing anything
+  # 1. Enter this directory first
   base = "Frontend"
 
-  # The folder where your site lives after it is built (Relative to Root)
-  publish = "Frontend/dist"
+  # 2. Publish the 'dist' folder FOUND INSIDE the base directory
+  # (Netlify combines base + publish, so this equals Frontend/dist)
+  publish = "dist"
 
-  # The command to build your site
+  # 3. The command to build your site
   command = "npm install && npm run build"
 
 [[redirects]]
-  # This fixes the "Page Not Found" error when you refresh the page
+  # Fixes "Page Not Found" on refresh
   from = "/*"
   to = "/index.html"
   status = 200
