@@ -8,11 +8,10 @@ import ProfileModal from './components/ProfileModal';
 import OfflineIndicator from './components/OfflineIndicator';
 
 function App() {
-  // These variables control the layout and tabs
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [activeTab, setActiveTab] = useState('dashboard'); // This fixes the "Blank Page" issue
+  const [activeTab, setActiveTab] = useState('dashboard');
 
   return (
     <AuthProvider>
@@ -20,7 +19,7 @@ function App() {
         
         <OfflineIndicator />
 
-        {/* The Sidebar Logic */}
+        {/* The Sidebar (Menu) */}
         <Sidebar 
           isOpen={sidebarOpen} 
           onClose={() => setSidebarOpen(false)} 
@@ -30,7 +29,7 @@ function App() {
 
         <div className="flex-1 flex flex-col w-full transition-all duration-300">
           
-          {/* The Header Logic */}
+          {/* The Top White Header */}
           <Header 
             onMenuClick={() => setSidebarOpen(true)} 
             onProfileClick={() => setShowProfile(true)}
@@ -38,7 +37,6 @@ function App() {
 
           <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4 lg:p-6">
             <div className="max-w-7xl mx-auto">
-              {/* Pass the 'activeTab' so Dashboard knows what to show */}
               <Dashboard 
                 activeTab={activeTab} 
                 onShowHistory={() => setShowHistory(true)} 
@@ -47,7 +45,6 @@ function App() {
           </main>
         </div>
 
-        {/* Popups */}
         {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
         {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
 
