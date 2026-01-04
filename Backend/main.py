@@ -21,7 +21,7 @@ else:
     genai.configure(api_key=GOOGLE_API_KEY)
     print("✅ Gemini AI Configured")
 
-# 3. Setup Firebase (Standard)
+# 3. Setup Firebase
 db = None
 try:
     if not firebase_admin._apps:
@@ -50,7 +50,7 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"message": "Bhasha-Kisan Backend is Live (Powered by Gemini 2.0) 🟢"}
+    return {"message": "Bhasha-Kisan Backend is Live 🟢"}
 
 @app.post("/analyze")
 async def analyze_crop(
@@ -61,19 +61,44 @@ async def analyze_crop(
     print("\n--- 🚀 REQUEST START ---")
     
     try:
-        # Use the ALIAS that appeared in your allowed list
+        # Use the "Latest" alias (Free Tier + Reliable)
         model = genai.GenerativeModel("gemini-flash-latest")
         
         prompt_parts = []
         
-        # 1. Add Text to Prompt
-        if text:
-            print(f"📝 Text: {text}")
-            prompt_parts.append(text)
-        else:
-            prompt_parts.append("Analyze this crop image. Identify disease, pests, or health status. Provide remedies.")
+        # --- SYSTEM INSTRUCTION ( The "Brain" of Bhasha-Kisan ) ---
+        # We tell the AI exactly who it is and how to behave.
+        system_prompt = (
+            "You are 'Bhasha-Kisan', an expert AI agricultural assistant for Indian farmers. "
+            "Your answers should be simple, practical, and easy to understand. "
+            "Ignore technical jargon unless necessary."
+        )
+        prompt_parts.append(system_prompt)
 
-        # 2. Add Image to Prompt
+        # 1. Handle Text (Typed Questions or Voice)
+        if text:
+            print(f"📝 User Query: {text}")
+            # This is the 'Native Language' Magic logic:
+            language_instruction = (
+                f"User Query: '{text}'\n\n"
+                "INSTRUCTIONS:\n"
+                "1. Detect the language of the query above (e.g., Hindi, Marathi, Tamil, Gujarati, English).\n"
+                "2. Answer the query STRICTLY in that same language.\n"
+                "3. If the user types in 'Hinglish' (Hindi with English letters), answer in Hindi using Devanagari script.\n"
+                "4. If the user asks for a solution, give step-by-step advice."
+            )
+            prompt_parts.append(language_instruction)
+            
+        else:
+            # 2. Handle Image Only (No Text Provided)
+            # Fallback: Give dual language since we don't know what they speak.
+            prompt_parts.append(
+                "Analyze this crop image. Identify disease, pests, or nutrient deficiency. "
+                "Provide simple home remedies and chemical solutions. "
+                "IMPORTANT: Provide the response in TWO languages: English and Hindi (side-by-side)."
+            )
+
+        # 3. Handle Image Input
         if image:
             print(f"📸 Image: {image.filename}")
             content = await image.read()
@@ -81,16 +106,16 @@ async def analyze_crop(
             prompt_parts.append(image_blob)
 
         if not prompt_parts:
-            return {"answer": "Please provide text or an image."}
+            return {"answer": "Namaste! Please ask a question or upload a photo."}
 
-        # 3. Generate
-        print("📡 Sending to Gemini 2.0 Flash...")
+        # 4. Generate Content
+        print("📡 Sending to Gemini...")
         response = model.generate_content(prompt_parts)
         print("✅ Success!")
         
         answer_text = response.text
         
-        # 4. Save to History
+        # 5. Save to History
         if db:
             try:
                 db.collection("users").document(user_id).collection("history").add({
@@ -107,7 +132,6 @@ async def analyze_crop(
     except Exception as e:
         print(f"🔥 ERROR: {str(e)}")
         traceback.print_exc()
-        # Return the error to the UI so we can see it
         return {"answer": f"Error: {str(e)}"}
 
 @app.get("/history/{user_id}")
