@@ -61,7 +61,8 @@ async def analyze_crop(
     print("\n--- 🚀 REQUEST START ---")
     
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        # Use the ALIAS that appeared in your allowed list
+        model = genai.GenerativeModel("gemini-flash-latest")
         
         prompt_parts = []
         
