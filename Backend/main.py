@@ -16,7 +16,7 @@ load_dotenv()
 # 2. Setup Gemini AI
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
-    print("❌ CRITICAL: GOOGLE_API_KEY not found in Environment!")
+    print("❌ CRITICAL: GOOGLE_API_KEY not found! Check Render Environment.")
 else:
     genai.configure(api_key=GOOGLE_API_KEY)
     print("✅ Gemini AI Configured")
@@ -33,7 +33,7 @@ try:
             db = firestore.client()
             print("✅ Firebase Connected")
         else:
-            print("⚠️ Warning: FIREBASE_CREDENTIALS missing. History won't be saved.")
+            print("⚠️ Warning: FIREBASE_CREDENTIALS missing. History won't save.")
 except Exception as e:
     print(f"⚠️ Firebase Error: {e}")
 
@@ -47,6 +47,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- HELPER: Try multiple models until one works ---
+def get_working_model(is_image=False):
+    """
+    Tries to return the best available model.
+    """
+    # List of models to try in order of preference
+    if is_image:
+        candidates = ["gemini-1.5-flash", "gemini-pro-vision", "gemini-1.5-pro"]
+    else:
+        candidates = ["gemini-1.5-flash", "gemini-pro", "gemini-1.0-pro"]
+    
+    # Just return the first one for now, the try/catch in analyze will handle the fallback
+    return candidates
 
 # 5. Routes
 
@@ -64,82 +78,86 @@ async def analyze_crop(
     print(f"👤 User: {user_id}")
     
     try:
-        # Use the Flash model
-        model = genai.GenerativeModel("gemini-pro")
-        
+        response_text = ""
         prompt_parts = []
         
-        # 1. Handle Text
+        # 1. Prepare Data
         if text:
             print(f"📝 Text detected: {text}")
             prompt_parts.append(text)
         else:
-            # Default prompt if only image is sent
-            prompt_parts.append("Analyze this crop image. Identify disease, pests, or health status. Provide remedies if needed.")
+            prompt_parts.append("Analyze this crop image. Identify disease, pests, or health status. Provide remedies.")
 
-        # 2. Handle Image (CRITICAL FIX: Send Bytes, not PIL Object)
         if image:
             print(f"📸 Image detected: {image.filename}")
             content = await image.read()
-            
-            # Create the specific blob format Gemini Flash expects
-            image_blob = {
-                "mime_type": image.content_type,
-                "data": content
-            }
+            # Standard blob format for modern Gemini
+            image_blob = {"mime_type": image.content_type, "data": content}
             prompt_parts.append(image_blob)
-            print("✅ Image processed into Bytes")
 
         if not prompt_parts:
             return {"answer": "Please provide text or an image."}
 
-        # 3. Send to Gemini
-        print("📡 Sending to Gemini API...")
-        response = model.generate_content(prompt_parts)
-        print("✅ Gemini Response Received!")
+        # 2. INTELLIGENT MODEL TRY-CATCH SYSTEM
+        # We try the best model first. If it crashes (404), we try the old one.
         
-        answer_text = response.text
+        # ATTEMPT 1: Try Gemini 1.5 Flash (The Best/Fastest)
+        try:
+            print("Attempting Model: gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = model.generate_content(prompt_parts)
+            response_text = response.text
+            
+        except Exception as e_flash:
+            print(f"⚠️ Flash Failed ({e_flash}). Switching to backup...")
+            
+            # ATTEMPT 2: Try Gemini Pro / Vision (The Old Reliable)
+            try:
+                model_name = "gemini-pro-vision" if image else "gemini-pro"
+                print(f"Attempting Model: {model_name}")
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(prompt_parts)
+                response_text = response.text
+                
+            except Exception as e_pro:
+                print(f"❌ All models failed. Error: {e_pro}")
+                
+                # DIAGNOSTIC: Ask server what models it actually has
+                available = []
+                try:
+                    for m in genai.list_models():
+                        available.append(m.name)
+                except:
+                    available = ["Could not list models"]
+                
+                # Return the error TO THE FRONTEND so the user sees it
+                return {
+                    "answer": f"SYSTEM ERROR: Your server rejected all models.\n"
+                              f"Server Error: {str(e_pro)}\n"
+                              f"Available Models on Server: {available}"
+                }
+
+        # 3. Success! Send response.
+        print("✅ Analysis Successful!")
         
-        # 4. Save to Firebase (Async-safe)
+        # Save to Firebase (Optional)
         if db:
             try:
                 db.collection("users").document(user_id).collection("history").add({
                     "timestamp": firestore.SERVER_TIMESTAMP,
                     "transcript": text or "Image Upload",
-                    "analysis": answer_text[:100] + "...", 
-                    "response": {"answer": answer_text}
+                    "analysis": response_text[:100] + "...", 
+                    "response": {"answer": response_text}
                 })
-                print("💾 Saved to History")
-            except Exception as db_err:
-                print(f"⚠️ Database Save Failed: {db_err}")
+            except:
+                pass
 
-        return {"answer": answer_text}
+        return {"answer": response_text}
 
     except Exception as e:
         print(f"🔥 CRITICAL SERVER ERROR: {str(e)}")
-        traceback.print_exc() # Prints the exact line number of the crash
-        return {"answer": f"Server Error: {str(e)}. Check Render Logs."}
-
-@app.get("/history/{user_id}")
-def get_history(user_id: str):
-    if not db:
-        return {"history": []}
-    try:
-        # Fixed query to properly stream docs
-        history_ref = db.collection("users").document(user_id).collection("history")
-        docs = history_ref.order_by("timestamp", direction=firestore.Query.DESCENDING).limit(10).stream()
-        
-        history_list = []
-        for doc in docs:
-            data = doc.to_dict()
-            if "timestamp" in data and data["timestamp"]:
-                data["timestamp"] = str(data["timestamp"])
-            history_list.append(data)
-            
-        return {"history": history_list}
-    except Exception as e:
-        print(f"History Error: {e}")
-        return {"history": []}
+        traceback.print_exc()
+        return {"answer": f"Critical Error: {str(e)}"}
 
 # 6. Run Server
 if __name__ == "__main__":
