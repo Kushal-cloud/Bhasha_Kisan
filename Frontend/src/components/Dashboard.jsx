@@ -1,161 +1,76 @@
-import React, { useState } from 'react';
-import { useAuth } from '../hooks/useAuth';
-import useSpeech from '../hooks/useSpeech';
-import useGeolocation from '../hooks/useGeolocation'; // We use the location hook for weather
-import VoiceAssistant from './VoiceAssistant';
-import TranscriptionDisplay from './TranscriptionDisplay';
-import ImageCapture from './ImageCapture';
+import React, { useState } from "react";
+import Header from "./Header"; // Using your Header file
+import ImageCapture from "./ImageCapture"; // Using your ImageCapture file
 
-const Dashboard = ({ activeTab, onShowHistory }) => {
-  const { user } = useAuth();
-  const location = useGeolocation(); // Get user location
-  const { isListening, transcript, startListening, stopListening, setTranscript } = useSpeech();
-  
+const Dashboard = ({ weather, backendUrl, userId, triggerHistory }) => {
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [image, setImage] = useState(null);
 
-  // --- Logic to handle Mic & API ---
-  const handleMicClick = () => {
-    if (isListening) {
-      stopListening();
-      if (transcript) handleSendQuery(transcript, null);
-    } else {
-      setResponse(null);
-      startListening();
-    }
-  };
-
-  const handleSendQuery = async (text, imgFile) => {
+  // --- CENTRAL SEARCH LOGIC ---
+  const handleSearch = async (text, imageFile) => {
+    if (!text && !imageFile) return;
     setLoading(true);
-    try {
-      const API_URL = import.meta.env.VITE_API_URL || "https://bhasha-kisan-api.onrender.com";
-      const formData = new FormData();
-      if (text) formData.append("text", text);
-      if (imgFile) formData.append("image", imgFile);
-      formData.append("user_id", user?.uid || "guest");
+    setResponse(null);
 
-      const res = await fetch(`${API_URL}/analyze`, { method: "POST", body: formData });
+    try {
+      const formData = new FormData();
+      formData.append("user_id", userId);
+      if (text) formData.append("text", text);
+      if (imageFile) formData.append("image", imageFile);
+
+      const res = await fetch(backendUrl, { method: "POST", body: formData });
       const data = await res.json();
       setResponse(data.answer);
-      setTranscript(""); 
-    } catch (error) {
-      console.error("API Error:", error);
+    } catch (err) {
       setResponse("Error connecting to server.");
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
-
-  const handleImageUpload = (file) => {
-    setImage(file);
-    handleSendQuery(null, file);
-  };
-
-  // --- VIEW: WEATHER TAB ---
-  const renderWeather = () => (
-    <div className="bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl p-8 text-white shadow-lg animate-fade-in">
-      <div className="flex justify-between items-start">
-        <div>
-          <h2 className="text-3xl font-bold mb-2">Weather Forecast ☁️</h2>
-          <p className="opacity-90 text-lg">
-            {location.loaded 
-              ? `Location: ${location.coordinates.lat || 'Unknown'}, ${location.coordinates.lng || 'Unknown'}` 
-              : "Locating you..."}
-          </p>
-        </div>
-        <div className="text-6xl">28°C</div>
-      </div>
-      <div className="mt-8 grid grid-cols-3 gap-4 text-center bg-white/20 rounded-xl p-4">
-        <div>
-          <p className="font-bold">Humidity</p>
-          <p>65%</p>
-        </div>
-        <div>
-          <p className="font-bold">Wind</p>
-          <p>12 km/h</p>
-        </div>
-        <div>
-          <p className="font-bold">Rain</p>
-          <p>10% Chance</p>
-        </div>
-      </div>
-      <p className="mt-4 text-xs text-center opacity-75">Live weather data integration coming soon.</p>
-    </div>
-  );
-
-  // --- VIEW: VOICE TAB ---
-  const renderVoiceMode = () => (
-    <div className="bg-white rounded-2xl p-8 shadow-sm text-center animate-fade-in h-96 flex flex-col justify-center items-center">
-      <div className={`w-32 h-32 rounded-full flex items-center justify-center mb-6 transition-colors ${isListening ? 'bg-red-100' : 'bg-green-100'}`}>
-        <span className="text-6xl">{isListening ? '🛑' : '🎤'}</span>
-      </div>
-      <h2 className="text-2xl font-bold text-gray-800 mb-2">
-        {isListening ? "Listening..." : "Voice Assistant Ready"}
-      </h2>
-      <p className="text-gray-500 max-w-md">
-        Tap the microphone button below to ask about farming, pests, or market prices in your local language.
-      </p>
-    </div>
-  );
-
-  // --- VIEW: CROP DOCTOR TAB ---
-  const renderCropDoctor = () => (
-    <div className="bg-white p-6 rounded-xl shadow-sm animate-fade-in">
-      <h2 className="text-lg font-bold text-gray-800 mb-4">Crop Doctor 📸</h2>
-      <ImageCapture onCapture={handleImageUpload} />
-      {image && <p className="text-sm text-green-600 mt-2 text-center">Image selected: {image.name}</p>}
-    </div>
-  );
-
-  // --- VIEW: DASHBOARD (HOME) ---
-  const renderDashboard = () => (
-    <div className="bg-gradient-to-r from-green-600 to-green-800 rounded-2xl p-6 text-white shadow-lg animate-fade-in">
-      <h1 className="text-2xl font-bold mb-2">Namaste, {user?.name || 'Farmer'}! 🙏</h1>
-      <p className="opacity-90">
-        I am Bhasha-Kisan. Ask me about crops, weather, or diseases in your language.
-      </p>
-      <button 
-        onClick={onShowHistory}
-        className="mt-4 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg text-sm transition-colors"
-      >
-        📜 View Past Questions
-      </button>
-    </div>
-  );
 
   return (
-    <div className="space-y-6 pb-20">
-      
-      {/* 1. SWITCH CONTENT BASED ON TAB */}
-      {activeTab === 'dashboard' && renderDashboard()}
-      {activeTab === 'camera' && renderCropDoctor()}
-      {activeTab === 'voice' && renderVoiceMode()}
-      {activeTab === 'weather' && renderWeather()}
+    <div className="dashboard-container">
+      {/* 1. USE YOUR HEADER FILE */}
+      <Header weather={weather} />
 
-      {/* 2. SHARED AI RESPONSE AREA (Shows on all tabs if there is an answer) */}
-      {(response || loading) && (
-        <div className="bg-white border-l-4 border-green-500 p-6 rounded-r-xl shadow-md animate-fade-in mt-6">
-          <h3 className="font-bold text-gray-500 text-sm uppercase mb-2">
-            {loading ? "Analyzing..." : "Bhasha-Kisan Says:"}
-          </h3>
-          {loading ? (
-             <div className="flex space-x-2">
-               <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
-               <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce delay-100"></div>
-               <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce delay-200"></div>
-             </div>
-          ) : (
-            <div className="prose text-gray-800 whitespace-pre-line">
-              {response}
-            </div>
-          )}
+      <div className="p-6 max-w-5xl mx-auto">
+        {/* 2. SEARCH / VOICE SECTION */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8 border border-green-100">
+           <h2 className="text-xl font-bold text-green-800 mb-4">Ask Bhasha-Kisan</h2>
+           
+           <div className="flex gap-2">
+             <input 
+               type="text" 
+               placeholder="Type a question or use the mic..." 
+               className="flex-1 p-3 border rounded-full bg-gray-50 focus:outline-green-500"
+               onKeyDown={(e) => e.key === 'Enter' && handleSearch(e.target.value, null)}
+             />
+             {/* This button represents your VoiceAssistant.jsx logic */}
+             <button className="bg-green-100 p-3 rounded-full hover:bg-green-200">🎤</button> 
+           </div>
         </div>
-      )}
 
-      {/* 3. GLOBAL OVERLAYS */}
-      <TranscriptionDisplay transcript={transcript} isListening={isListening} />
-      <VoiceAssistant isListening={isListening} onClick={handleMicClick} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* 3. USE YOUR IMAGE CAPTURE FILE */}
+          <div className="bg-white p-6 rounded-xl shadow-md">
+            <h3 className="font-bold text-lg mb-4">📸 Crop Doctor</h3>
+            {/* Passing the search handler to your component */}
+            <ImageCapture onCapture={(file) => handleSearch(null, file)} />
+          </div>
+
+          {/* 4. AI RESULT DISPLAY */}
+          <div className="bg-green-50 p-6 rounded-xl border border-green-200 min-h-[200px]">
+            <h3 className="font-bold text-lg text-green-900 mb-2">🤖 AI Answer:</h3>
+            {loading ? <p className="text-green-600 animate-pulse">Analyzing...</p> : null}
+            {response ? (
+              <div className="whitespace-pre-wrap text-gray-800 leading-relaxed">
+                {response}
+              </div>
+            ) : (
+              !loading && <p className="text-gray-400 italic">Results will appear here...</p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
