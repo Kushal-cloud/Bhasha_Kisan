@@ -61,11 +61,7 @@ async def analyze_crop(
     print("\n--- 🚀 REQUEST START ---")
     
     try:
-        # --- THE FIX: USE THE MODEL FROM YOUR LIST ---
-        # Your server explicitly lists 'gemini-2.0-flash' as available.
-        # This model is Multimodal (handles both text & images).
-        # Use the EXPERIMENTAL version which has a free tier
-        model = genai.GenerativeModel("gemini-2.0-flash-exp")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         
         prompt_parts = []
         
