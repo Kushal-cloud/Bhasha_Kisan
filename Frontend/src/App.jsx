@@ -1,155 +1,196 @@
-import React, { useState } from "react";
-import "./index.css"; // <--- CHANGED TO MATCH YOUR FILE NAME
+import React, { useState, useEffect } from "react";
+import "./index.css";
 
 function App() {
-  // --- STATE VARIABLES ---
+  // --- 1. CONFIGURATION (CRITICAL: PUT YOUR URL HERE) ---
+  // Go to your Render Dashboard, copy your Backend URL, and paste it here.
+  // Example: "https://my-agri-app.onrender.com/analyze"
+  const BACKEND_URL = "https://bhasha-kisan.onrender.com/analyze"; 
+
+  // --- STATE ---
+  const [activeTab, setActiveTab] = useState("dashboard"); // 'dashboard', 'doctor', 'weather'
   const [inputText, setInputText] = useState("");
   const [selectedImage, setSelectedImage] = useState(null);
+  const [preview, setPreview] = useState(null);
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [preview, setPreview] = useState(null);
+  const [weather, setWeather] = useState(null);
 
-  // --- API URL (Replace with your actual Render URL) ---
-  const API_URL = "https://bhasha-kisan-api.onrender.com/analyze";
+  // --- WEATHER WIDGET (Auto-fetch for India) ---
+  useEffect(() => {
+    // Fetch generic India weather (Nagpur center point) for demo
+    fetch("https://api.open-meteo.com/v1/forecast?latitude=21.14&longitude=79.08&current_weather=true")
+      .then(res => res.json())
+      .then(data => setWeather(data.current_weather))
+      .catch(err => console.error("Weather Error:", err));
+  }, []);
 
-  // --- 1. HANDLE IMAGE SELECTION ---
+  // --- HANDLERS ---
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       setSelectedImage(file);
-      setPreview(URL.createObjectURL(file)); // Show preview to user
+      setPreview(URL.createObjectURL(file));
+      setActiveTab("doctor"); // Switch to doctor tab automatically
     }
   };
 
-  // --- 2. HANDLE SUBMISSION (TEXT or IMAGE) ---
-  const handleSubmit = async (e) => {
-    e.preventDefault(); // Stop page reload
-    
-    // Validation: Don't send empty requests
-    if (!inputText && !selectedImage) {
-      alert("Please type a question or upload an image!");
-      return;
-    }
-
-    setLoading(true);
-    setResponse(null); // Clear old answer
-
-    try {
-      // Create Form Data to send to Backend
-      const formData = new FormData();
-      formData.append("user_id", "guest_farmer"); // Optional user ID
-
-      if (inputText) {
-        formData.append("text", inputText);
-      }
-      if (selectedImage) {
-        formData.append("image", selectedImage);
-      }
-
-      // Send to Backend
-      const res = await fetch(API_URL, {
-        method: "POST",
-        body: formData, // Auto-sets Content-Type to multipart/form-data
-      });
-
-      const data = await res.json();
-      
-      if (data.answer) {
-        setResponse(data.answer);
-      } else {
-        setResponse("Sorry, no response received from the server.");
-      }
-
-    } catch (error) {
-      console.error("Error:", error);
-      setResponse("Server Error: Could not connect to Bhasha-Kisan.");
-    }
-
-    setLoading(false);
-  };
-
-  // --- 3. HANDLE MIC (Simple Placeholder) ---
   const startListening = () => {
     if ('webkitSpeechRecognition' in window) {
       const recognition = new window.webkitSpeechRecognition();
-      recognition.lang = 'hi-IN'; // Default to Hindi/Indian English
+      recognition.lang = 'hi-IN'; 
       recognition.start();
-
-      recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        setInputText(transcript); // Put spoken text into the search bar
-      };
+      recognition.onresult = (e) => setInputText(e.results[0][0].transcript);
     } else {
-      alert("Voice input is not supported in this browser.");
+      alert("Voice not supported in this browser.");
     }
   };
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!inputText && !selectedImage) return alert("Please type or upload!");
+
+    setLoading(true);
+    setResponse(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("user_id", "farmer_1");
+      if (inputText) formData.append("text", inputText);
+      if (selectedImage) formData.append("image", selectedImage);
+
+      const res = await fetch(BACKEND_URL, { method: "POST", body: formData });
+      
+      if (!res.ok) throw new Error(`Server Error: ${res.status}`);
+      
+      const data = await res.json();
+      setResponse(data.answer);
+      setActiveTab("doctor"); // Show results in Doctor tab
+      
+    } catch (error) {
+      console.error(error);
+      setResponse(`❌ Connection Failed. Check your Backend URL in App.jsx.\nError: ${error.message}`);
+    }
+    setLoading(false);
+  };
+
+  // --- RENDER HELPERS ---
   return (
-    <div className="app-container">
-      <header className="header">
-        <h1>🌾 Bhasha-Kisan</h1>
-        <p>Your AI Agriculture Assistant</p>
-      </header>
+    <div className="dashboard-container">
+      {/* SIDEBAR */}
+      <aside className="sidebar">
+        <div className="brand">🌾 Bhasha-Kisan</div>
+        <nav>
+          <button 
+            className={activeTab === 'dashboard' ? 'active' : ''} 
+            onClick={() => setActiveTab('dashboard')}
+          >
+            🏠 Dashboard
+          </button>
+          <button 
+            className={activeTab === 'doctor' ? 'active' : ''} 
+            onClick={() => setActiveTab('doctor')}
+          >
+            🩺 Crop Doctor
+          </button>
+          <button 
+            className={activeTab === 'weather' ? 'active' : ''} 
+            onClick={() => setActiveTab('weather')}
+          >
+            ☁️ Weather
+          </button>
+        </nav>
+      </aside>
 
-      <div className="main-content">
-        
-        {/* --- SECTION A: SEARCH BAR & MIC --- */}
-        <div className="search-section">
-          <form onSubmit={handleSubmit} className="search-box">
-            <input
-              type="text"
-              placeholder="Ask a question (e.g., Tamatar me khad?)"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              disabled={loading}
-            />
-            {/* Mic Button */}
-            <button type="button" className="mic-btn" onClick={startListening}>
-              🎤
-            </button>
-            {/* Send Button */}
-            <button type="submit" className="send-btn" disabled={loading}>
-              {loading ? "..." : "➤"}
-            </button>
-          </form>
-        </div>
-
-        {/* --- SECTION B: IMAGE UPLOAD (CROP DOCTOR) --- */}
-        <div className="upload-section">
-          <label htmlFor="file-upload" className="upload-label">
-            📸 Upload Crop Photo
-          </label>
-          <input
-            id="file-upload"
-            type="file"
-            accept="image/*"
-            onChange={handleImageChange}
-            hidden
-          />
-          
-          {/* Image Preview */}
-          {preview && (
-            <div className="image-preview">
-              <img src={preview} alt="Selected Crop" />
-              <button onClick={() => {setSelectedImage(null); setPreview(null);}}>❌ Remove</button>
+      {/* MAIN CONTENT */}
+      <main className="main-content">
+        <header className="top-bar">
+          <h2>Welcome, Farmer</h2>
+          {weather && (
+            <div className="weather-badge">
+              🌡️ {weather.temperature}°C | 💨 {weather.windspeed} km/h
             </div>
           )}
-        </div>
+        </header>
 
-        {/* --- SECTION C: AI RESPONSE --- */}
-        {response && (
-          <div className="response-card">
-            <h3>🤖 Bhasha-Kisan Says:</h3>
-            {/* Display new lines correctly */}
-            <div className="response-text">
-              {response.split('\n').map((line, index) => (
-                <p key={index}>{line}</p>
-              ))}
+        {/* TAB: DASHBOARD (Quick Actions) */}
+        {activeTab === 'dashboard' && (
+          <div className="tab-content fade-in">
+            <div className="hero-section">
+              <h3>How can I help you today? / आज मैं आपकी क्या मदद कर सकता हूँ?</h3>
+              
+              <form onSubmit={handleSubmit} className="search-bar-large">
+                <input 
+                  type="text" 
+                  placeholder="Ask anything (e.g., Tamatar me khad?)" 
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                />
+                <button type="button" onClick={startListening} className="mic-btn">🎤</button>
+                <button type="submit" className="go-btn" disabled={loading}>
+                  {loading ? "..." : "Search"}
+                </button>
+              </form>
+            </div>
+
+            <div className="stats-grid">
+              <div className="card" onClick={() => document.getElementById('file-upload').click()}>
+                <h4>📸 Scan Crop</h4>
+                <p>Detect diseases instantly</p>
+              </div>
+              <div className="card">
+                <h4>💧 Irrigation</h4>
+                <p>Check water schedule</p>
+              </div>
+              <div className="card">
+                <h4>💰 Market Price</h4>
+                <p>Check Mandi rates</p>
+              </div>
             </div>
           </div>
         )}
 
-      </div>
+        {/* TAB: CROP DOCTOR (Results & Upload) */}
+        {activeTab === 'doctor' && (
+          <div className="tab-content fade-in">
+            <div className="doctor-panel">
+              <div className="upload-area">
+                <label htmlFor="file-upload" className="upload-box">
+                  {preview ? <img src={preview} alt="Preview" /> : "📸 Click to Upload Photo"}
+                </label>
+                <input id="file-upload" type="file" accept="image/*" onChange={handleImageChange} hidden />
+              </div>
+
+              <div className="result-area">
+                {loading && <div className="loader">Analyzing your crop... please wait...</div>}
+                
+                {response && (
+                  <div className="ai-response">
+                    <h3>📢 Diagnosis Report:</h3>
+                    <div className="response-text">
+                      {response.split('\n').map((line, i) => <p key={i}>{line}</p>)}
+                    </div>
+                  </div>
+                )}
+                
+                {!loading && !response && (
+                  <p className="placeholder-text">Upload a photo or ask a question to see results here.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: WEATHER */}
+        {activeTab === 'weather' && (
+          <div className="tab-content fade-in">
+            <h3>Weather Forecast (India)</h3>
+            <p>Real-time weather data is active.</p>
+            {/* You can expand this later */}
+          </div>
+        )}
+
+      </main>
     </div>
   );
 }
