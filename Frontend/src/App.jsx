@@ -6,7 +6,7 @@ import "./index.css";
 
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const BACKEND_URL = "https://bhasha-kisan-api.onrender.com/analyze";
+  const BACKEND_URL = "https://bhasha-kisan.onrender.com/analyze";
 
   return (
     <div className="dashboard-container">
