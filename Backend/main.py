@@ -16,12 +16,12 @@ load_dotenv()
 # 2. Setup Gemini AI
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
-    print("❌ CRITICAL: GOOGLE_API_KEY not found! Check Render Environment.")
+    print("❌ CRITICAL: GOOGLE_API_KEY not found!")
 else:
     genai.configure(api_key=GOOGLE_API_KEY)
     print("✅ Gemini AI Configured")
 
-# 3. Setup Firebase
+# 3. Setup Firebase (Standard)
 db = None
 try:
     if not firebase_admin._apps:
@@ -32,8 +32,6 @@ try:
             firebase_admin.initialize_app(cred)
             db = firestore.client()
             print("✅ Firebase Connected")
-        else:
-            print("⚠️ Warning: FIREBASE_CREDENTIALS missing. History won't save.")
 except Exception as e:
     print(f"⚠️ Firebase Error: {e}")
 
@@ -48,25 +46,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- HELPER: Try multiple models until one works ---
-def get_working_model(is_image=False):
-    """
-    Tries to return the best available model.
-    """
-    # List of models to try in order of preference
-    if is_image:
-        candidates = ["gemini-1.5-flash", "gemini-pro-vision", "gemini-1.5-pro"]
-    else:
-        candidates = ["gemini-1.5-flash", "gemini-pro", "gemini-1.0-pro"]
-    
-    # Just return the first one for now, the try/catch in analyze will handle the fallback
-    return candidates
-
 # 5. Routes
 
 @app.get("/")
 def home():
-    return {"message": "Bhasha-Kisan Backend is Live & Connected! 🟢"}
+    return {"message": "Bhasha-Kisan Backend is Live (Powered by Gemini 2.0) 🟢"}
 
 @app.post("/analyze")
 async def analyze_crop(
@@ -74,92 +58,70 @@ async def analyze_crop(
     image: UploadFile = File(None),
     user_id: str = Form("guest")
 ):
-    print("\n--- 🚀 NEW REQUEST RECEIVED ---")
-    print(f"👤 User: {user_id}")
+    print("\n--- 🚀 REQUEST START ---")
     
     try:
-        response_text = ""
+        # --- THE FIX: USE THE MODEL FROM YOUR LIST ---
+        # Your server explicitly lists 'gemini-2.0-flash' as available.
+        # This model is Multimodal (handles both text & images).
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        
         prompt_parts = []
         
-        # 1. Prepare Data
+        # 1. Add Text to Prompt
         if text:
-            print(f"📝 Text detected: {text}")
+            print(f"📝 Text: {text}")
             prompt_parts.append(text)
         else:
             prompt_parts.append("Analyze this crop image. Identify disease, pests, or health status. Provide remedies.")
 
+        # 2. Add Image to Prompt
         if image:
-            print(f"📸 Image detected: {image.filename}")
+            print(f"📸 Image: {image.filename}")
             content = await image.read()
-            # Standard blob format for modern Gemini
             image_blob = {"mime_type": image.content_type, "data": content}
             prompt_parts.append(image_blob)
 
         if not prompt_parts:
             return {"answer": "Please provide text or an image."}
 
-        # 2. INTELLIGENT MODEL TRY-CATCH SYSTEM
-        # We try the best model first. If it crashes (404), we try the old one.
+        # 3. Generate
+        print("📡 Sending to Gemini 2.0 Flash...")
+        response = model.generate_content(prompt_parts)
+        print("✅ Success!")
         
-        # ATTEMPT 1: Try Gemini 1.5 Flash (The Best/Fastest)
-        try:
-            print("Attempting Model: gemini-1.5-flash")
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(prompt_parts)
-            response_text = response.text
-            
-        except Exception as e_flash:
-            print(f"⚠️ Flash Failed ({e_flash}). Switching to backup...")
-            
-            # ATTEMPT 2: Try Gemini Pro / Vision (The Old Reliable)
-            try:
-                model_name = "gemini-pro-vision" if image else "gemini-pro"
-                print(f"Attempting Model: {model_name}")
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content(prompt_parts)
-                response_text = response.text
-                
-            except Exception as e_pro:
-                print(f"❌ All models failed. Error: {e_pro}")
-                
-                # DIAGNOSTIC: Ask server what models it actually has
-                available = []
-                try:
-                    for m in genai.list_models():
-                        available.append(m.name)
-                except:
-                    available = ["Could not list models"]
-                
-                # Return the error TO THE FRONTEND so the user sees it
-                return {
-                    "answer": f"SYSTEM ERROR: Your server rejected all models.\n"
-                              f"Server Error: {str(e_pro)}\n"
-                              f"Available Models on Server: {available}"
-                }
-
-        # 3. Success! Send response.
-        print("✅ Analysis Successful!")
+        answer_text = response.text
         
-        # Save to Firebase (Optional)
+        # 4. Save to History
         if db:
             try:
                 db.collection("users").document(user_id).collection("history").add({
                     "timestamp": firestore.SERVER_TIMESTAMP,
                     "transcript": text or "Image Upload",
-                    "analysis": response_text[:100] + "...", 
-                    "response": {"answer": response_text}
+                    "analysis": answer_text[:100] + "...", 
+                    "response": {"answer": answer_text}
                 })
             except:
                 pass
 
-        return {"answer": response_text}
+        return {"answer": answer_text}
 
     except Exception as e:
-        print(f"🔥 CRITICAL SERVER ERROR: {str(e)}")
+        print(f"🔥 ERROR: {str(e)}")
         traceback.print_exc()
-        return {"answer": f"Critical Error: {str(e)}"}
+        # Return the error to the UI so we can see it
+        return {"answer": f"Error: {str(e)}"}
 
-# 6. Run Server
+@app.get("/history/{user_id}")
+def get_history(user_id: str):
+    if not db: return {"history": []}
+    try:
+        docs = db.collection("users").document(user_id).collection("history")\
+                 .order_by("timestamp", direction=firestore.Query.DESCENDING).limit(10).stream()
+        return {"history": [d.to_dict() for d in docs]}
+    except:
+        return {"history": []}
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     uvicorn.run(app, host="0.0.0.0", port=port)
