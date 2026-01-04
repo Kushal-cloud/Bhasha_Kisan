@@ -1,60 +1,43 @@
-import React from 'react';
+import React from "react";
 
-const Sidebar = ({ isOpen, onClose, activeTab, setActiveTab }) => {
+const Sidebar = ({ activeTab, setActiveTab }) => {
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-    { id: 'camera', label: 'Crop Doctor', icon: '📸' },
-    { id: 'voice', label: 'Voice Assistant', icon: '🎤' },
-    { id: 'weather', label: 'Weather', icon: '☁️' },
+    { id: "dashboard", label: "🏠 Dashboard", icon: "🏠" },
+    { id: "crop_doctor", label: "🌱 Crop Doctor", icon: "🌱" },
+    { id: "weather", label: "☁️ Weather", icon: "☁️" },
   ];
 
   return (
-    <>
-      {/* Mobile Overlay */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
-          onClick={onClose}
-        ></div>
-      )}
-
-      {/* Sidebar Container */}
-      <aside className={`
-        fixed top-0 left-0 z-40 h-screen w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out
-        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:relative lg:translate-x-0
-      `}>
-        <div className="p-6 border-b">
-          <h2 className="text-2xl font-bold text-green-800">Menu</h2>
-        </div>
-
-        <nav className="mt-6 px-4 space-y-2">
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => {
-                setActiveTab(item.id);
-                if (window.innerWidth < 1024) onClose();
-              }}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                activeTab === item.id 
-                  ? 'bg-green-100 text-green-800 font-semibold' 
-                  : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <span className="text-xl">{item.icon}</span>
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="absolute bottom-0 w-full p-4 border-t">
-          <p className="text-xs text-gray-400 text-center">
-            © 2026 Bhasha-Kisan <br/> Empowering Farmers
-          </p>
-        </div>
-      </aside>
-    </>
+    <aside className="w-64 bg-green-900 text-white flex flex-col shadow-2xl h-full">
+      {/* LOGO */}
+      <div className="p-6 text-center border-b border-green-800">
+        <h1 className="text-2xl font-extrabold tracking-wide">🌾 Bhasha-Kisan</h1>
+        <p className="text-xs text-green-300 mt-1">AI Agriculture Assistant</p>
+      </div>
+      
+      {/* MENU */}
+      <nav className="flex-1 p-4 space-y-3 mt-4">
+        {menuItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className={`w-full flex items-center gap-3 px-6 py-4 rounded-xl transition-all duration-300 ${
+              activeTab === item.id 
+                ? "bg-green-600 text-white shadow-lg font-bold translate-x-1" 
+                : "hover:bg-green-800 text-green-100 hover:pl-8"
+            }`}
+          >
+            <span className="text-xl">{item.icon}</span>
+            {item.label}
+          </button>
+        ))}
+      </nav>
+      
+      {/* FOOTER */}
+      <div className="p-4 text-center text-xs text-green-400 opacity-60">
+        © 2026 Bhasha-Kisan
+      </div>
+    </aside>
   );
 };
 
