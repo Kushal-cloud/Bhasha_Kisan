@@ -65,7 +65,7 @@ async def analyze_crop(
     
     try:
         # Use the Flash model
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-pro")
         
         prompt_parts = []
         
