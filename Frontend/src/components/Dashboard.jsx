@@ -15,7 +15,7 @@ const Dashboard = ({ backendUrl }) => {
       .catch(err => console.error(err));
   }, []);
 
-  // 2. Voice Assistant (Mic Logic)
+  // 2. Mic Logic
   const startListening = () => {
     if ('webkitSpeechRecognition' in window) {
       const recognition = new window.webkitSpeechRecognition();
@@ -33,10 +33,10 @@ const Dashboard = ({ backendUrl }) => {
     }
   };
 
-  // 3. Search Handler
+  // 3. Search Logic
   const handleSearch = async (manualQuery, imageFile) => {
     const textToSend = manualQuery || query;
-    if (!textToSend && !imageFile) return alert("Please type something or upload!");
+    if (!textToSend && !imageFile) return alert("Please type or upload!");
 
     setLoading(true);
     setResponse(null);
@@ -57,104 +57,79 @@ const Dashboard = ({ backendUrl }) => {
   };
 
   return (
-    <div className="p-6 md:p-10 w-full max-w-7xl mx-auto bg-gray-50 min-h-screen">
+    <div className="dashboard-container">
       
-      {/* HEADER */}
-      <header className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
+      {/* Header */}
+      <div className="header-flex">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Namaste, Farmer! 🙏</h1>
-          <p className="text-gray-500">Ready to solve your farming problems?</p>
+          <h1 style={{margin:0, color:'#333'}}>Namaste, Farmer! 🙏</h1>
+          <p style={{margin:0, color:'#666'}}>Ready to solve your farming problems?</p>
         </div>
-        
         {weather && (
-          <div className="bg-white px-6 py-3 rounded-full shadow-md border border-gray-200 flex items-center gap-4">
-            <span className="text-3xl">☀️</span>
+          <div className="weather-widget">
+            <span style={{fontSize:'30px'}}>☀️</span>
             <div>
-              <p className="font-bold text-xl text-gray-800">{weather.temperature}°C</p>
-              <p className="text-xs text-gray-500">Wind: {weather.windspeed} km/h</p>
+              <strong>{weather.temperature}°C</strong>
+              <div style={{fontSize:'12px', color:'#777'}}>Wind: {weather.windspeed} km/h</div>
             </div>
           </div>
         )}
-      </header>
+      </div>
 
-      {/* SEARCH BAR SECTION */}
-      <div className="bg-green-600 rounded-2xl p-8 text-white text-center shadow-lg mb-12">
-        <h2 className="text-2xl font-semibold mb-6">How can I help you today?</h2>
+      {/* Hero Section */}
+      <div className="hero-box">
+        <h2 style={{margin:0}}>How can I help you today?</h2>
         
-        <div className="bg-white rounded-full p-2 flex items-center max-w-2xl mx-auto shadow-xl">
+        <div className="search-wrapper">
           <input 
             type="text" 
+            className="search-input"
             placeholder="Ask a question..." 
-            className="flex-1 px-6 py-3 text-gray-800 rounded-full focus:outline-none"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />
-          
-          {/* MIC BUTTON */}
-          <button 
-            onClick={startListening}
-            className={`p-3 text-2xl rounded-full transition-colors ${isListening ? "text-red-600 bg-red-100 animate-pulse" : "text-gray-500 hover:bg-gray-100"}`}
-          >
-            🎤
-          </button>
-
-          <button 
-            onClick={() => handleSearch()}
-            className="bg-green-800 text-white px-6 py-3 rounded-full font-bold ml-2 hover:bg-green-900 transition"
-          >
-            Search
-          </button>
+          <button onClick={startListening} className={`mic-btn ${isListening ? 'listening' : ''}`}>🎤</button>
+          <button onClick={() => handleSearch()} className="search-btn">Search</button>
         </div>
-        {isListening && <p className="mt-2 text-sm animate-pulse">Listening... Speak now 🗣️</p>}
+        {isListening && <p>Listening... Speak now 🗣️</p>}
       </div>
 
-      {/* ACTION CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-        
-        {/* SCAN CROP */}
-        <div className="bg-white p-6 rounded-2xl shadow-md border-b-4 border-green-500 relative group cursor-pointer hover:shadow-xl transition-all">
+      {/* Cards Grid */}
+      <div className="cards-grid">
+        {/* Scan Crop */}
+        <div className="card green">
           <input 
             type="file" 
             accept="image/*" 
-            className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full"
+            style={{opacity:0, position:'absolute', inset:0, cursor:'pointer'}}
             onChange={(e) => handleSearch(null, e.target.files[0])}
           />
-          <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">📸</div>
-          <h3 className="text-xl font-bold text-gray-800">Scan Crop</h3>
-          <p className="text-gray-500 text-sm mt-2">Upload photo to detect disease.</p>
+          <span className="card-icon">📸</span>
+          <h3>Scan Crop</h3>
+          <p>Upload photo to detect disease.</p>
         </div>
 
-        {/* IRRIGATION */}
-        <div 
-          onClick={() => handleSearch("Give me irrigation advice for current season")}
-          className="bg-white p-6 rounded-2xl shadow-md border-b-4 border-blue-500 cursor-pointer hover:shadow-xl transition-all"
-        >
-          <div className="text-5xl mb-4">💧</div>
-          <h3 className="text-xl font-bold text-gray-800">Irrigation</h3>
-          <p className="text-gray-500 text-sm mt-2">Check water schedule.</p>
+        {/* Irrigation */}
+        <div className="card blue" onClick={() => handleSearch("Give me irrigation advice")}>
+          <span className="card-icon">💧</span>
+          <h3>Irrigation</h3>
+          <p>Check water schedule.</p>
         </div>
 
-        {/* MARKET PRICE */}
-        <div 
-          onClick={() => handleSearch("Current mandi prices for vegetables")}
-          className="bg-white p-6 rounded-2xl shadow-md border-b-4 border-yellow-500 cursor-pointer hover:shadow-xl transition-all"
-        >
-          <div className="text-5xl mb-4">💰</div>
-          <h3 className="text-xl font-bold text-gray-800">Market Price</h3>
-          <p className="text-gray-500 text-sm mt-2">Check Mandi rates.</p>
+        {/* Market */}
+        <div className="card yellow" onClick={() => handleSearch("Current mandi prices")}>
+          <span className="card-icon">💰</span>
+          <h3>Market Price</h3>
+          <p>Check Mandi rates.</p>
         </div>
       </div>
 
-      {/* AI RESPONSE AREA */}
+      {/* AI Response */}
       {(response || loading) && (
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
-          <h3 className="text-xl font-bold text-green-800 mb-4">🤖 Bhasha-Kisan Says:</h3>
-          {loading ? (
-             <p className="text-green-600 animate-pulse text-lg">Analyzing... please wait...</p>
-          ) : (
-             <div className="text-gray-700 whitespace-pre-wrap leading-relaxed">{response}</div>
-          )}
+        <div className="response-box">
+          <h3 style={{color:'#14532d', marginTop:0}}>🤖 Bhasha-Kisan Says:</h3>
+          {loading ? <p>Analyzing...</p> : <div className="response-text">{response}</div>}
         </div>
       )}
 
