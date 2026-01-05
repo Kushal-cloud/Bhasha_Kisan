@@ -62,7 +62,8 @@ async def analyze_crop(
     
     try:
         # Use the "Latest" alias (Free Tier + Reliable)
-        model = genai.GenerativeModel("gemini-flash-latest")
+        # Use the Standard 1.5 Flash model (High Limit: 15 requests/min)
+        model = genai.GenerativeModel("gemini-1.5-flash")
         
         prompt_parts = []
         
