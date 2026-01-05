@@ -12,7 +12,7 @@ const Dashboard = ({ backendUrl }) => {
     fetch("https://api.open-meteo.com/v1/forecast?latitude=20.59&longitude=78.96&current_weather=true")
       .then(res => res.json())
       .then(data => setWeather(data.current_weather))
-      .catch(err => console.error(err));
+      .catch(err => console.error("Weather Error:", err));
   }, []);
 
   // 2. Mic Logic
@@ -25,7 +25,8 @@ const Dashboard = ({ backendUrl }) => {
       recognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         setQuery(transcript);
-        handleSearch(transcript, null);
+        // Optional: Auto-submit on voice end
+        // handleSearch(transcript, null); 
       };
       recognition.start();
     } else {
@@ -33,13 +34,18 @@ const Dashboard = ({ backendUrl }) => {
     }
   };
 
-  // 3. Search Logic
+  // 3. Search Logic (DEBUG VERSION)
   const handleSearch = async (manualQuery, imageFile) => {
     const textToSend = manualQuery || query;
-    if (!textToSend && !imageFile) return alert("Please type or upload!");
+    if (!textToSend && !imageFile) {
+      alert("Please type a question or upload an image!");
+      return;
+    }
 
+    // 1. START LOADING
     setLoading(true);
     setResponse(null);
+    console.log("🚀 Sending Request to:", backendUrl);
 
     try {
       const formData = new FormData();
@@ -47,13 +53,26 @@ const Dashboard = ({ backendUrl }) => {
       if (textToSend) formData.append("text", textToSend);
       if (imageFile) formData.append("image", imageFile);
 
+      // 2. SEND TO BACKEND
       const res = await fetch(backendUrl, { method: "POST", body: formData });
+      
+      console.log("📡 Server Status:", res.status);
+      
+      if (!res.ok) {
+        throw new Error(`Server Error: ${res.status}`);
+      }
+
       const data = await res.json();
+      console.log("✅ Data Received:", data);
       setResponse(data.answer);
+
     } catch (err) {
-      setResponse("❌ Server Error: Could not connect to Backend.");
+      console.error("🔥 FETCH ERROR:", err);
+      setResponse(`❌ Error: ${err.message}. (Check Console F12 for details)`);
+    } finally {
+      // 3. STOP LOADING (Always run this!)
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -90,14 +109,15 @@ const Dashboard = ({ backendUrl }) => {
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />
           <button onClick={startListening} className={`mic-btn ${isListening ? 'listening' : ''}`}>🎤</button>
-          <button onClick={() => handleSearch()} className="search-btn">Search</button>
+          <button onClick={() => handleSearch()} className="search-btn" disabled={loading}>
+            {loading ? "Wait..." : "Search"}
+          </button>
         </div>
         {isListening && <p>Listening... Speak now 🗣️</p>}
       </div>
 
       {/* Cards Grid */}
       <div className="cards-grid">
-        {/* Scan Crop */}
         <div className="card green">
           <input 
             type="file" 
@@ -110,14 +130,12 @@ const Dashboard = ({ backendUrl }) => {
           <p>Upload photo to detect disease.</p>
         </div>
 
-        {/* Irrigation */}
         <div className="card blue" onClick={() => handleSearch("Give me irrigation advice")}>
           <span className="card-icon">💧</span>
           <h3>Irrigation</h3>
           <p>Check water schedule.</p>
         </div>
 
-        {/* Market */}
         <div className="card yellow" onClick={() => handleSearch("Current mandi prices")}>
           <span className="card-icon">💰</span>
           <h3>Market Price</h3>
@@ -129,7 +147,13 @@ const Dashboard = ({ backendUrl }) => {
       {(response || loading) && (
         <div className="response-box">
           <h3 style={{color:'#14532d', marginTop:0}}>🤖 Bhasha-Kisan Says:</h3>
-          {loading ? <p>Analyzing...</p> : <div className="response-text">{response}</div>}
+          {loading ? (
+            <p style={{color: '#22c55e', fontWeight: 'bold'}}>
+              Analyzing... (This may take 60 seconds if server is waking up)
+            </p>
+          ) : (
+            <div className="response-text">{response}</div>
+          )}
         </div>
       )}
 
