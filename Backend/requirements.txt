@@ -1,10 +1,6 @@
-fastapi
-uvicorn
-python-multipart
-python-dotenv
-firebase-admin
+flask
+flask-cors
 google-generativeai>=0.7.2
-pillow
-requests
-httpx
-pydantic
+python-dotenv
+gunicorn
+Pillow
