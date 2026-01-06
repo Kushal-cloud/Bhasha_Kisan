@@ -1,6 +1,6 @@
 """
 services/gemini_service.py
-Gemini 2.0 Flash Multimodal Service for Crop Disease Analysis
+Gemini 1.5 Flash Multimodal Service for Crop Disease Analysis
 Optimized for Indian agricultural context
 """
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class GeminiService:
     """
-    Gemini 2.0 Flash service for agricultural intelligence
+    Gemini 1.5 Flash service for agricultural intelligence
     Handles both text and vision tasks
     """
     
@@ -47,9 +47,13 @@ class GeminiService:
             api_key = os.getenv("GOOGLE_API_KEY")
             genai.configure(api_key=api_key)
             
+            # --- FIX: Switched to Stable 1.5 Flash Model (High Quota) ---
+            # This fixes the "429 Quota Exceeded" error (Limit: 1500/day)
+            model_name = "gemini-1.5-flash"
+
             # Text model for queries
             self.model = genai.GenerativeModel(
-                model_name="gemini-2.0-flash-exp",
+                model_name=model_name,
                 generation_config={
                     "temperature": 0.7,
                     "top_p": 0.95,
@@ -66,7 +70,7 @@ class GeminiService:
             
             # Vision model for image analysis
             self.vision_model = genai.GenerativeModel(
-                model_name="gemini-2.0-flash-exp",
+                model_name=model_name,
                 generation_config={
                     "temperature": 0.4,  # Lower for factual accuracy
                     "top_p": 0.95,
@@ -74,7 +78,7 @@ class GeminiService:
                 }
             )
             
-            logger.info("Gemini models initialized successfully")
+            logger.info(f"Gemini models initialized successfully using {model_name}")
             
         except Exception as e:
             logger.error(f"Failed to initialize Gemini: {str(e)}")
@@ -87,7 +91,7 @@ class GeminiService:
         location: Optional[Dict[str, float]] = None
     ) -> Dict[str, Any]:
         """
-        Analyze crop disease from image using Gemini 2.0 Flash
+        Analyze crop disease from image using Gemini 1.5 Flash
         
         Returns detailed diagnosis with Indian agricultural regulations
         """
