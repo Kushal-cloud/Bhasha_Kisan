@@ -4,15 +4,14 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system tools (ffmpeg, sound libraries)
+# Install system tools
 RUN apt-get update && apt-get install -y \
     gcc \
     libsndfile1 \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# --- NUCLEAR FIX: Install Critical Packages DIRECTLY ---
-# We do not rely on requirements.txt for these key libraries anymore.
+# Install Critical Packages DIRECTLY (Added google-genai for safety)
 RUN pip install --no-cache-dir \
     uvicorn \
     fastapi \
@@ -28,11 +27,11 @@ RUN pip install --no-cache-dir \
 # Copy the rest of the code
 COPY . .
 
-# Set Port
-ENV PORT=10000
+# Set Port to 8080 (Matches Render's expectation)
+ENV PORT=8080
 
-# Expose Port
-EXPOSE 10000
+# Expose Port 8080
+EXPOSE 8080
 
-# Start Command (Explicit Python Call)
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "10000"]
+# Start Command - Uses port 8080
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
