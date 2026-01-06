@@ -1,31 +1,38 @@
-# Use a lightweight Python image
+# Use python 3.11 slim image
 FROM python:3.11-slim
 
-# Set the working directory
+# Set working directory
 WORKDIR /app
 
-# Install system dependencies required for Audio/Image (ffmpeg, libsndfile)
+# Install system tools (ffmpeg, sound libraries)
 RUN apt-get update && apt-get install -y \
     gcc \
     libsndfile1 \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first to leverage Docker cache
-COPY requirements.txt .
+# --- NUCLEAR FIX: Install Critical Packages DIRECTLY ---
+# We do not rely on requirements.txt for these key libraries anymore.
+RUN pip install --no-cache-dir \
+    uvicorn \
+    fastapi \
+    python-multipart \
+    python-dotenv \
+    firebase-admin \
+    "google-generativeai>=0.7.2" \
+    pillow \
+    requests \
+    httpx \
+    pydantic
 
-# Install dependencies GLOBALLY (Fixes "No module named uvicorn")
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the app code
+# Copy the rest of the code
 COPY . .
 
-# Set environment variables
+# Set Port
 ENV PORT=10000
-ENV PYTHONUNBUFFERED=1
 
-# Expose the port (Render needs this)
+# Expose Port
 EXPOSE 10000
 
-# Start the application using Python module mode
+# Start Command (Explicit Python Call)
 CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "10000"]
