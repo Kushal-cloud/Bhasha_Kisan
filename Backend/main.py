@@ -91,11 +91,8 @@ async def analyze_crop(
     print("\n--- 🚀 REQUEST START ---")
     
     try:
-        # --- SAFE MODE: Using 'gemini-pro' first ---
-        # Once we see the logs, we will switch back to Flash.
-        # This model is older but extremely stable.
-        # Use the specific, powerful model from your list
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        
+        model = genai.GenerativeModel("gemini-flash-latest")
         
         prompt_parts = []
         
