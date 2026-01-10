@@ -4,7 +4,6 @@ import uvicorn
 import traceback
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from dotenv import load_dotenv
 import google.generativeai as genai
 import firebase_admin
@@ -20,18 +19,37 @@ if not GOOGLE_API_KEY:
 else:
     genai.configure(api_key=GOOGLE_API_KEY)
     print("✅ Gemini AI Configured")
+    
+    # --- DEBUG: PRINT AVAILABLE MODELS ---
+    print("\n🔍 CHECKING AVAILABLE MODELS...")
+    try:
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                print(f"   👉 {m.name}")
+    except Exception as e:
+        print(f"   ⚠️ Could not list models: {e}")
+    print("--------------------------------\n")
 
 # 3. Setup Firebase
 db = None
 try:
     if not firebase_admin._apps:
+        # Check for Render's Environment Variable first
         firebase_creds_json = os.getenv("FIREBASE_CREDENTIALS")
         if firebase_creds_json:
             cred_dict = json.loads(firebase_creds_json)
             cred = credentials.Certificate(cred_dict)
             firebase_admin.initialize_app(cred)
             db = firestore.client()
-            print("✅ Firebase Connected")
+            print("✅ Firebase Connected (via Env Var)")
+        # Fallback to local file (for your laptop)
+        elif os.path.exists("serviceAccountKey.json"):
+            cred = credentials.Certificate("serviceAccountKey.json")
+            firebase_admin.initialize_app(cred)
+            db = firestore.client()
+            print("✅ Firebase Connected (via File)")
+        else:
+            print("⚠️ No Firebase credentials found.")
 except Exception as e:
     print(f"⚠️ Firebase Error: {e}")
 
@@ -52,6 +70,18 @@ app.add_middleware(
 def home():
     return {"message": "Bhasha-Kisan Backend is Live 🟢"}
 
+@app.get("/check-models")
+def check_models():
+    """Helper route to see models in the browser"""
+    try:
+        model_list = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                model_list.append(m.name)
+        return {"available_models": model_list}
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.post("/analyze")
 async def analyze_crop(
     text: str = Form(None), 
@@ -61,74 +91,35 @@ async def analyze_crop(
     print("\n--- 🚀 REQUEST START ---")
     
     try:
-        # Use the "Latest" alias (Free Tier + Reliable)
-        # Use the Standard 1.5 Flash model (High Limit: 15 requests/min)
-        # Use the specific version '001' or 'latest' alias
-        model = genai.GenerativeModel("gemini-1.5-flash-001")
+        # --- SAFE MODE: Using 'gemini-pro' first ---
+        # Once we see the logs, we will switch back to Flash.
+        # This model is older but extremely stable.
+        model = genai.GenerativeModel("gemini-pro")
         
         prompt_parts = []
         
-        # --- SYSTEM INSTRUCTION ( The "Brain" of Bhasha-Kisan ) ---
-        # We tell the AI exactly who it is and how to behave.
-        system_prompt = (
-            "You are 'Bhasha-Kisan', an expert AI agricultural assistant for Indian farmers. "
-            "Your answers should be simple, practical, and easy to understand. "
-            "Ignore technical jargon unless necessary."
+        # System Prompt
+        prompt_parts.append(
+            "You are Bhasha-Kisan, an expert AI agricultural assistant. "
+            "Answer simply in the user's detected language."
         )
-        prompt_parts.append(system_prompt)
 
-        # 1. Handle Text (Typed Questions or Voice)
         if text:
-            print(f"📝 User Query: {text}")
-            # This is the 'Native Language' Magic logic:
-            language_instruction = (
-                f"User Query: '{text}'\n\n"
-                "INSTRUCTIONS:\n"
-                "1. Detect the language of the query above (e.g., Hindi, Marathi, Tamil, Gujarati, English).\n"
-                "2. Answer the query STRICTLY in that same language.\n"
-                "3. If the user types in 'Hinglish' (Hindi with English letters), answer in Hindi using Devanagari script.\n"
-                "4. If the user asks for a solution, give step-by-step advice."
-            )
-            prompt_parts.append(language_instruction)
+            print(f"📝 Query: {text}")
+            prompt_parts.append(f"User Question: {text}")
             
-        else:
-            # 2. Handle Image Only (No Text Provided)
-            # Fallback: Give dual language since we don't know what they speak.
-            prompt_parts.append(
-                "Analyze this crop image. Identify disease, pests, or nutrient deficiency. "
-                "Provide simple home remedies and chemical solutions. "
-                "IMPORTANT: Provide the response in TWO languages: English and Hindi (side-by-side)."
-            )
-
-        # 3. Handle Image Input
         if image:
-            print(f"📸 Image: {image.filename}")
+            print(f"📸 Image received: {image.filename}")
             content = await image.read()
             image_blob = {"mime_type": image.content_type, "data": content}
             prompt_parts.append(image_blob)
 
-        if not prompt_parts:
-            return {"answer": "Namaste! Please ask a question or upload a photo."}
-
-        # 4. Generate Content
+        # Generate
         print("📡 Sending to Gemini...")
         response = model.generate_content(prompt_parts)
         print("✅ Success!")
         
         answer_text = response.text
-        
-        # 5. Save to History
-        if db:
-            try:
-                db.collection("users").document(user_id).collection("history").add({
-                    "timestamp": firestore.SERVER_TIMESTAMP,
-                    "transcript": text or "Image Upload",
-                    "analysis": answer_text[:100] + "...", 
-                    "response": {"answer": answer_text}
-                })
-            except:
-                pass
-
         return {"answer": answer_text}
 
     except Exception as e:
@@ -136,16 +127,7 @@ async def analyze_crop(
         traceback.print_exc()
         return {"answer": f"Error: {str(e)}"}
 
-@app.get("/history/{user_id}")
-def get_history(user_id: str):
-    if not db: return {"history": []}
-    try:
-        docs = db.collection("users").document(user_id).collection("history")\
-                 .order_by("timestamp", direction=firestore.Query.DESCENDING).limit(10).stream()
-        return {"history": [d.to_dict() for d in docs]}
-    except:
-        return {"history": []}
-
 if __name__ == "__main__":
+    # Use PORT 8080 to match Render
     port = int(os.environ.get("PORT", 8080))
     uvicorn.run(app, host="0.0.0.0", port=port)
